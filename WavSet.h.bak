@@ -1,0 +1,40 @@
+////////////////////////////////////////////////////////////////
+//nakedsoftware.org, spi@oifii.org or stephane.poirier@oifii.org
+//
+//
+//2012june01, creation with ReadWavFile(), SplitInSegments() and GetPointerToSegmentData() for spisplitshuffleplay
+//2012june04, spi, added EraseSegment() for spisplitdisperseplay, tested OK
+//2012june04, spi, added WriteWavFile() for spisplitdisperseplay
+//2012june04, spi, added WavSet(WavSet* pWavSet) and Copy() for spisplitdisperseplay
+//2012june04, spi, added WriteWavFile() for spisplitdisperseplay
+//2012june06, spi, added FadeSegmentEdges() for spisplitdisperseplay
+//nakedsoftware.org, spi@oifii.org or stephane.poirier@oifii.org
+////////////////////////////////////////////////////////////////
+#define _WAVSET_H
+
+class WavSet
+{
+public:
+	int SampleRate;
+	int totalFrames; 
+	int numChannels;
+	int numSamples;  
+	int numBytes;
+	float* pSamples;
+
+	int numFramesPerSegment;
+	int numSegments;
+	int numSamplesPerSegment;  
+	int numBytesPerSegment;
+
+	WavSet();
+	WavSet(class WavSet* pWavSet, int idSegment=-1);
+	bool Copy(class WavSet* pWavSet, int idSegment=-1);
+	~WavSet();
+	bool ReadWavFile(const char* filename);
+	bool WriteWavFile(const char* filename);
+	bool SplitInSegments(double fSecondsPerSegment);
+	float* GetPointerToSegmentData(int idSegment);
+	bool EraseSegment(int idSegment);
+	bool FadeSegmentEdges(int idSegment);
+};

@@ -1,0 +1,249 @@
+////////////////////////////////////////////////////////////////
+//nakedsoftware.org, spi@oifii.org or stephane.poirier@oifii.org
+//
+//
+//2012june01, creation
+//2012june04, added EraseSegment(), spi@oifii.org or stephane.poirier@oifii.org
+//2012june04, added WriteWavFile(), spi@oifii.org or stephane.poirier@oifii.org
+//nakedsoftware.org, spi@oifii.org or stephane.poirier@oifii.org
+////////////////////////////////////////////////////////////////
+
+#include <stdlib.h>
+#include <stdio.h>
+#include "portaudio.h"
+
+#include "WavFile.h"
+#include "SoundTouch.h"
+using namespace soundtouch;
+
+#include "WavSet.h"
+#include <memory.h>
+
+WavSet::WavSet()
+{
+	SampleRate = 0;
+	totalFrames = 0; 
+	numChannels = 0;
+	numSamples = 0;  
+	numBytes = 0;
+	pSamples = NULL;
+
+	numFramesPerSegment = -1;
+	numSegments = -1;
+	numSamplesPerSegment = -1;  
+	numBytesPerSegment = -1;
+}
+
+WavSet::WavSet(WavSet* pWavSet, int idSegment)
+{
+	Copy(pWavSet,idSegment); //-1 for all segments
+}
+
+bool WavSet::Copy(class WavSet* pWavSet, int idSegment) //-1 for all segments
+{
+	SampleRate = pWavSet->SampleRate;
+	totalFrames = pWavSet->totalFrames; 
+	numChannels = pWavSet->numChannels;
+	numSamples = pWavSet->numSamples;  
+	numBytes = pWavSet->numBytes;
+
+	numFramesPerSegment = pWavSet->numFramesPerSegment;
+	numSegments = pWavSet->numSegments;
+	numSamplesPerSegment = pWavSet->numSamplesPerSegment;  
+	numBytesPerSegment = pWavSet->numBytesPerSegment;
+
+	if(numBytes!=0)
+	{
+		pSamples = (float*) malloc( numBytes );
+		if( pSamples == NULL )
+		{
+			printf("Could not allocate load buffer.\n");
+			exit(1);
+		}
+		if(idSegment==-1)
+		{
+			//copy all segments
+			memcpy(pSamples, pWavSet->pSamples, numBytes);
+		}
+		else if(idSegment<numSegments)
+		{
+			//initialize buffer with zeros
+			memset(pSamples, 0, numBytes);
+			//copy one segment only
+			float* pBaseFloatDest = GetPointerToSegmentData(idSegment);
+			float* pBaseFloatSrc = pWavSet->GetPointerToSegmentData(idSegment);
+			memcpy(pBaseFloatDest, pBaseFloatSrc, numBytesPerSegment);
+		}
+		else
+		{
+			printf("Could copy segment id %d\n", idSegment);
+			if(pSamples) free(pSamples);
+			exit(1);
+		}
+	}
+	return true;
+}
+
+WavSet::~WavSet()
+{
+	if(pSamples) free(pSamples);
+}
+
+bool WavSet::ReadWavFile(const char* filename)
+{
+	/////////////////////
+	// open input file...
+    WavInFile* pWavInFile = new WavInFile(filename);
+	if(pWavInFile)
+	{
+		printf("Begin reading file.\n"); fflush(stdout);
+		SampleRate = pWavInFile->getSampleRate();
+		//totalFrames = (pWavInFile->getLengthMS()/1000.0) * SampleRate; 
+		totalFrames = pWavInFile->getNumSamples(); 
+		numChannels = pWavInFile->getNumChannels();
+		numSamples = totalFrames * numChannels;  
+		numBytes = numSamples * sizeof(float);
+		pSamples = (float*) malloc( numBytes );
+		if( pSamples == NULL )
+		{
+			/////////////////////////////////////////////////////////////
+			//log currently used parameters into file (to ease debugging)
+			/////////////////////////////////////////////////////////////
+			if(1)
+			{
+				FILE* pFILE = fopen("debug.txt", "a");
+				fprintf(pFILE, "ReadWavFile():\n");
+				fprintf(pFILE, "totalFrames = %d\n", totalFrames);
+				fprintf(pFILE, "numChannels = %d\n", numChannels);
+				fprintf(pFILE, "numSamples = %d\n", numSamples);
+				fprintf(pFILE, "numBytes = %d\n", numBytes);
+				fprintf(pFILE, "Could not allocate load buffer, exiting ...\n");
+				fclose(pFILE);
+			}
+			printf("Could not allocate load buffer, exiting ...\n");
+			exit(1);
+		}
+		//for(int i=0; i<numSamples; i++ ) pLoadedSamples[i] = 0;
+
+		///////////////////////////////////////
+		// read samples from the input file ...
+		while (pWavInFile->eof() == 0)
+		{
+			// Read a chunk of samples from the input file
+			int num = pWavInFile->read(pSamples, numSamples);
+		}
+
+		delete pWavInFile;
+		printf("Done!\n"); fflush(stdout);
+	}
+	return true;
+}
+
+bool WavSet::WriteWavFile(const char* filename)
+{
+	WavOutFile* pWavOutFile = new WavOutFile(filename, SampleRate, 16, numChannels);
+	if(pWavOutFile)
+	{
+		pWavOutFile->write(pSamples, totalFrames * numChannels);
+		//pWavOutFile->close(); //close was provoquing a crash, file is automatically closed when WavOutFile object is deleted
+		delete pWavOutFile;
+	}
+	return true;
+}
+
+bool WavSet::SplitInSegments(double fSecondsPerSegment)
+{
+	numFramesPerSegment = fSecondsPerSegment * SampleRate;
+	if(numFramesPerSegment>totalFrames || fSecondsPerSegment==0.0) 
+	{
+		/////////////////////////////////////////////////////////////
+		//log currently used parameters into file (to ease debugging)
+		/////////////////////////////////////////////////////////////
+		if(1)
+		{
+			FILE* pFILE = fopen("debug.txt", "a");
+			fprintf(pFILE, "SplitInSegments():\n");
+			fprintf(pFILE, "fSecondsPerSegment = %f\n", fSecondsPerSegment);
+			fprintf(pFILE, "SampleRate = %d\n", SampleRate);
+			fprintf(pFILE, "numFramesPerSegment = %d\n", numFramesPerSegment);
+			fprintf(pFILE, "totalFrames = %d\n", totalFrames);
+			fprintf(pFILE, "(numFramesPerSegment>totalFrames || fSecondsPerSegment==0.0)==1, warning ...\n");
+			fclose(pFILE);
+		}
+		printf("(numFramesPerSegment>totalFrames || fSecondsPerSegment==0.0)==1, warning ...\n");
+		//return false;
+		//assert(false);
+		numFramesPerSegment=totalFrames;
+	}
+	numSegments = totalFrames/numFramesPerSegment;
+	numSamplesPerSegment = numFramesPerSegment * numChannels;  
+	numBytesPerSegment = numSamplesPerSegment * sizeof(float);
+	return true;
+}
+
+float* WavSet::GetPointerToSegmentData(int idSegment)
+{
+	if(pSamples==NULL || idSegment>(numSegments-1)) return NULL; //error
+	return pSamples+idSegment*numSamplesPerSegment;
+}
+
+bool WavSet::EraseSegment(int idSegment)
+{
+	for(int i=0; i<numFramesPerSegment; i++ )
+    {
+        *(GetPointerToSegmentData(idSegment)+2*i) = 0;  /* left */
+        *(GetPointerToSegmentData(idSegment)+2*i+1) = 0;  /* right */
+    }
+    return 0;
+
+	return true;
+}
+
+bool WavSet::FadeSegmentEdges(int idSegment)
+{
+	//numFramesPerEdge is half of the total number of frames to fade
+	//int numFramesPerEdge = numFramesPerSegment/4; //pretty much the largest value
+	//int numFramesPerEdge = 100; //pretty much the smallest value
+	int numFramesPerEdge = numFramesPerSegment/16; 
+
+	//if(numFramesPerSegment<(2*100)) 
+	if(numFramesPerSegment<(2*numFramesPerEdge)) 
+	{
+		/////////////////////////////////////////////////////////////
+		//log currently used parameters into file (to ease debugging)
+		/////////////////////////////////////////////////////////////
+		if(1)
+		{
+			FILE* pFILE = fopen("debug.txt", "a");
+			fprintf(pFILE, "FadeSegmentEdges():\n");
+			fprintf(pFILE, "idSegment = %d\n", idSegment);
+			fprintf(pFILE, "numFramesPerSegment = %d\n", numFramesPerSegment);
+			fprintf(pFILE, "numFramesPerEdge = %d\n", numFramesPerEdge);
+			fprintf(pFILE, "Not enough frames for FadeSegmentEdges().\n");
+			fclose(pFILE);
+		}
+		printf("Not enough frames for FadeSegmentEdges().\n");
+		return false;
+	}
+	float a,aa;
+	int ii;
+	//for(int i=0; i<100; i++ )
+	for(int i=0; i<numFramesPerEdge; i++ )
+    {
+		//starting edge
+		//a = i/100.0f;
+		a = i/(1.0f*numFramesPerEdge); //a has values between 0.0 and 1.0, fade in factor
+        *(GetPointerToSegmentData(idSegment)+2*i) = a*(*(GetPointerToSegmentData(idSegment)+2*i));  /* left */
+        *(GetPointerToSegmentData(idSegment)+2*i+1) = a*(*(GetPointerToSegmentData(idSegment)+2*i+1));  /* right */
+
+		//ending edge
+		aa = 1-a; //aa has values between 1.0 and 0.0, fade out factor
+		//ii = numFramesPerSegment-100+i;
+		ii = numFramesPerSegment-numFramesPerEdge+i;
+        *(GetPointerToSegmentData(idSegment)+2*ii) = aa*(*(GetPointerToSegmentData(idSegment)+2*ii));  /* left */
+        *(GetPointerToSegmentData(idSegment)+2*ii+1) = aa*(*(GetPointerToSegmentData(idSegment)+2*ii+1));  /* right */
+    }
+    return 0;
+
+	return true;
+}

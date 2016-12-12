@@ -1,0 +1,3 @@
+filename = Angelique Ionatos - Canta_frida_khalo_-_si_tan_solo(middle)_9sec.wav
+fSecondsPerSegment = 0.500000
+numSecondsPlay = 20
